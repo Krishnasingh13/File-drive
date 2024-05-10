@@ -1,34 +1,78 @@
 "use client";
-import { Button } from "@/components/ui/button";
-import React from "react";
-import Header from "./Header";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useOrganization, useUser } from "@clerk/nextjs";
+
+import { UploadButton } from "./dashboard/_components/upload-button";
+import { FileCard } from "./dashboard/_components/file-card";
+import { Loader2 } from "lucide-react";
+import Image from "next/image";
+import { useState } from "react";
+import { SearchBar } from "./dashboard/_components/search-bar";
 
 const page = () => {
-  const files = useQuery(api.files.getFiles);
-  const createFile = useMutation(api.files.createFile);
+  const [query, setQuery] = useState("");
+  const organization = useOrganization();
+  let orgId: string | undefined = undefined;
+
+  const user = useUser();
+
+  if (organization.isLoaded && user.isLoaded) {
+    orgId = organization.organization?.id ?? user.user?.id;
+  }
+
+  const files = useQuery(api.files.getFiles, orgId ? { orgId } : "skip");
+
+  const isLoading = files === undefined;
 
   return (
-    <div>
-      <Header />
+    <main className="container mx-auto pt-12">
+      {isLoading && (
+        <div className="flex flex-col gap-8 w-full items-center mt-24">
+          <Loader2 className="h-20 w-20 animate-spin text-gray-500" />
+          <div className="text-xl">Loading your images...</div>
+        </div>
+      )}
 
-      <div className=" flex items-center justify-center flex-col">
-        {files?.map((file) => {
-          return <div key={file._id}>{file.name}</div>;
-        })}
+      {!isLoading && files.length === 0 && (
+        <div className="flex flex-col gap-8 w-full items-center mt-24">
+          <Image
+            alt="an image of a picture and directory icon"
+            width="300"
+            height="300"
+            src="/empty.svg"
+          />
+          <div className="text-2xl">You have no files, upload one now</div>
+          <UploadButton />
+        </div>
+      )}
 
-        <Button
-          onClick={() => {
-            createFile({
-              name: "hello world",
-            });
-          }}
-        >
-          Click Me
-        </Button>
-      </div>
-    </div>
+      {!isLoading && files.length > 0 && (
+        <>
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-4xl font-bold">Your Files</h1>
+
+            <div className="flex items-center gap-3">
+              <SearchBar query={query} setQuery={setQuery} />
+
+              <UploadButton />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            {files?.map((file) => {
+              return (
+                <FileCard
+                  key={file._id}
+                  file={file}
+                  // favorites={favorites ?? []}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+    </main>
   );
 };
 

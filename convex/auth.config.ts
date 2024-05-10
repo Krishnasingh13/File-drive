@@ -1,8 +1,8 @@
 export default {
-    providers: [
-      {
-        domain: "https://lovable-ermine-660.convex.cloud",
-        applicationID: "convex",
-      },
-    ],
-  };
+  providers: [
+    {
+      domain: "https://subtle-albacore-58.clerk.accounts.dev",
+      applicationID: "convex",
+    },
+  ],
+};
