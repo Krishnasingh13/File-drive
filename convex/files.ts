@@ -1,4 +1,10 @@
-import { MutationCtx, QueryCtx, mutation, query } from "./_generated/server";
+import {
+  MutationCtx,
+  QueryCtx,
+  internalMutation,
+  mutation,
+  query,
+} from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { getUser } from "./users";
 import { fileTypes } from "./schema";
@@ -33,7 +39,8 @@ async function hasAccessToOrg(ctx: QueryCtx | MutationCtx, orgId: string) {
   }
 
   const hasAccess =
-    user.orgIds.includes(orgId) || user.tokenIdentifier.includes(orgId);
+    user.orgIds.some((item) => item.orgId === orgId) ||
+    user.tokenIdentifier.includes(orgId);
 
   if (!hasAccess) {
     return null;
@@ -56,10 +63,7 @@ export const createFile = mutation({
       throw new ConvexError("You must be logged in to upload a file");
     }
 
-    const hasAccess = await hasAccessToOrg(
-      ctx,
-      args.orgId
-    );
+    const hasAccess = await hasAccessToOrg(ctx, args.orgId);
 
     if (!hasAccess) {
       throw new ConvexError("You do not have access to this org");
@@ -70,6 +74,7 @@ export const createFile = mutation({
       orgId: args.orgId,
       type: args.type,
       fileId: args.fileId,
+      userId: hasAccess.user._id,
     });
   },
 });
@@ -79,18 +84,17 @@ export const getFiles = query({
     orgId: v.string(),
     query: v.optional(v.string()),
     favorites: v.optional(v.boolean()),
+    deletedOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    console.log("delete only  ", args.deletedOnly);
     const identity = await ctx.auth.getUserIdentity();
 
     if (!identity) {
       return [];
     }
 
-    const hasAccess = await hasAccessToOrg(
-      ctx,
-      args.orgId
-    );
+    const hasAccess = await hasAccessToOrg(ctx, args.orgId);
 
     if (!hasAccess) {
       return [];
@@ -129,8 +133,14 @@ export const getFiles = query({
         .collect();
 
       files = files.filter((file) =>
-        favorites.some((favorite) => favorite.fileId === file._id)
+        favorites?.some((favorite) => favorite.fileId === file._id)
       );
+    }
+
+    if (args.deletedOnly) {
+      files = files.filter((file) => file.shouldDelete);
+    } else {
+      files = files.filter((file) => !file.shouldDelete);
     }
 
     const filesWithUrl = await Promise.all(
@@ -144,6 +154,23 @@ export const getFiles = query({
   },
 });
 
+export const deleteAllFile = internalMutation({
+  args: {},
+  async handler(ctx) {
+    const files = await ctx.db
+      .query("files")
+      .withIndex("by_shouldDelete", (q) => q.eq("shouldDelete", true))
+      .collect();
+
+    await Promise.all(
+      files.map(async (file) => {
+        await ctx.storage.delete(file.fileId);
+        return await ctx.db.delete(file._id);
+      })
+    );
+  },
+});
+
 export const deleteFile = mutation({
   args: { fileId: v.id("files") },
   async handler(ctx, args) {
@@ -153,7 +180,42 @@ export const deleteFile = mutation({
       throw new ConvexError("no access to file");
     }
 
-    await ctx.db.delete(args.fileId);
+    const isAdmin =
+      access.user.orgIds.find((org) => org.orgId === access.file.orgId)
+        ?.role === "admin";
+
+    if (!isAdmin) {
+      throw new ConvexError("you have no admin access to delete file");
+    }
+
+    await ctx.db.patch(args.fileId, {
+      shouldDelete: true,
+    });
+    // await ctx.db.delete(args.fileId);
+  },
+});
+
+export const restoreFile = mutation({
+  args: { fileId: v.id("files") },
+  async handler(ctx, args) {
+    const access = await hasAccessToFile(ctx, args.fileId);
+
+    if (!access) {
+      throw new ConvexError("no access to file");
+    }
+
+    const isAdmin =
+      access.user.orgIds.find((org) => org.orgId === access.file.orgId)
+        ?.role === "admin";
+
+    if (!isAdmin) {
+      throw new ConvexError("you have no admin access to delete file");
+    }
+
+    await ctx.db.patch(args.fileId, {
+      shouldDelete: false,
+    });
+    // await ctx.db.delete(args.fileId);
   },
 });
 
@@ -224,10 +286,7 @@ async function hasAccessToFile(
     return null;
   }
 
-  const hasAccess = await hasAccessToOrg(
-    ctx,
-    file.orgId
-  );
+  const hasAccess = await hasAccessToOrg(ctx, file.orgId);
 
   if (!hasAccess) {
     return null;

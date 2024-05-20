@@ -28,9 +28,11 @@ function Placeholder() {
 export function FileBrowser({
   title,
   favoritesOnly,
+  deletedOnly,
 }: {
   title: string;
   favoritesOnly?: boolean;
+  deletedOnly?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const organization = useOrganization();
@@ -48,7 +50,7 @@ export function FileBrowser({
 
   const files = useQuery(
     api.files.getFiles,
-    orgId ? { orgId, query, favorites: favoritesOnly } : "skip"
+    orgId ? { orgId, query, favorites: favoritesOnly, deletedOnly } : "skip"
   );
   console.log(files);
   const isLoading = files === undefined;
