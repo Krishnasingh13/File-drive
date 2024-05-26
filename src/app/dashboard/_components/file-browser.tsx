@@ -143,11 +143,13 @@ export function FileBrowser({
         <TabsContent value="grid">
           <div className="grid grid-cols-3 gap-4">
             {modifiedFiles?.map((file) => {
+              //  @ts-ignore
               return <FileCard key={file._id} file={file} />;
             })}
           </div>
         </TabsContent>
         <TabsContent value="table">
+          {/* @ts-ignore */}
           <DataTable columns={columns} data={modifiedFiles} />
         </TabsContent>
       </Tabs>
